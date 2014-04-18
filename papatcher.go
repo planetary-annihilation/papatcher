@@ -19,6 +19,7 @@ import "io/ioutil"
 import "net/http"
 import "os"
 import "os/user"
+import "os/exec"
 import "path/filepath"
 import "runtime"
 import "sort"
@@ -494,6 +495,24 @@ func run() int {
 		for _,err := range errors {
 			fmt.Fprintln(os.Stderr, "    ", err)
 		}
+		return 1
+	}
+
+	var args = make([]string,0,5)
+	if devenv {
+		args = append(args, "--ubernetdev")
+	}
+	args = append(args, "--ticket", login_response.SessionTicket)
+	cmd := exec.Command(filepath.Join(game_dir, "PA"), args...) 
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err = cmd.Start(); err != nil {
+		fmt.Fprintln(os.Stderr, "\nLaunching PA failed:", err)
+		return 1
+	}
+
+	if err = cmd.Wait(); err != nil {
+		fmt.Fprintln(os.Stderr, "\nPA exited with non-zero status: ", err)
 		return 1
 	}
 
