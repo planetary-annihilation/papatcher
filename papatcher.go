@@ -193,7 +193,7 @@ func readLine(reader *bufio.Reader, prompt string) (result string, err error) {
 	os.Stdout.Write([]byte(prompt))
 	result,err = reader.ReadString('\n')
 	if err == nil {
-		result = result[:len(result)-1]
+		result = strings.TrimSuffix(result[:len(result)-1], "\r")
 	} else if err == io.EOF {
 		if result != "" {
 			err = nil
@@ -223,6 +223,7 @@ func init() {
 var platform_map = map[string]string {
 	"darwin": "OSX",
 	"linux": "Linux",
+        "windows": "Windows",
 }
 
 
