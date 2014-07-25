@@ -203,7 +203,7 @@ func readLine(reader *bufio.Reader, prompt string) (result string, err error) {
 	}
 	return
 }
-	
+
 
 var client *http.Client
 
@@ -579,6 +579,10 @@ func login(username, password, urlroot string) (result *LoginResponse) {
 
 
 func validateManifest(manifest *Manifest) (work WorkItem, err error) {
+
+	seen := make(map[string]*ManifestBundle)
+	uniques := make([]*ManifestBundle, 0, len(manifest.Bundles))
+
 	for _,bundle := range manifest.Bundles {
 		if bundle.Checksum,err = hex.DecodeString(bundle.ChecksumStr); err != nil {
 			return
@@ -588,9 +592,20 @@ func validateManifest(manifest *Manifest) (work WorkItem, err error) {
 			return
 		}
 
-		work.Download += bundle.Size
-		work.Validate += bundle.Size
-		work.Write += bundle.Size
+		existing,found := seen[bundle.ChecksumStr]
+		if found {
+			if existing.Size != bundle.Size {
+				err = fmt.Errorf("Bundle %v repeated but with different sizes (%v and %v)", bundle.Checksum, bundle.Size, existing.Size)
+				return
+			}
+			existing.Entries = append(existing.Entries, bundle.Entries...)
+		} else {
+			seen[bundle.ChecksumStr] = bundle
+			uniques = append(uniques, bundle)
+			work.Download += bundle.Size
+			work.Validate += bundle.Size
+			work.Write += bundle.Size
+		}
 
 		for _,entry := range bundle.Entries {
 			if entry.Checksum,err = hex.DecodeString(entry.ChecksumStr); err != nil {
@@ -610,6 +625,9 @@ func validateManifest(manifest *Manifest) (work WorkItem, err error) {
 			work.Write += entry.Size
 		}
 	}
+
+	manifest.Bundles = uniques
+
 	return
 }
 
@@ -675,7 +693,7 @@ func processBundle(bundle *ManifestBundle, download_prefix, auth_suffix, cache_d
 
 	download_factory := func () (io.ReadCloser) {
 		url := download_prefix + bundle.ChecksumStr
-		//diag_chan <- fmt.Sprintf("downloading %v", url)
+		// diag_chan <- fmt.Sprintf("downloading %v", url)
 		
 		resp,err := client.Get(url + auth_suffix)
 		if err != nil {
