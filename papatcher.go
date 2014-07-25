@@ -248,7 +248,6 @@ func run() int {
 
 
 	ncpus := runtime.NumCPU()
-	fmt.Printf("setting GOMAXPROCS to %v\n", ncpus)
 	runtime.GOMAXPROCS(ncpus)
 
 
@@ -260,14 +259,21 @@ func run() int {
 
 
 	var devenv bool
-	var desired_stream string
 	flag.BoolVar(&devenv, "dev", false, "Use ubernetdev.com environment")
+
+	var desired_stream string
 	flag.StringVar(&desired_stream, "stream", "stable", "Stream to download/update")
+
+	var quiet bool
+	flag.BoolVar(&quiet, "quiet", false, "No status updates")
+
 	flag.Parse()
 
 	var urlroot string
 	if (devenv) {
-		fmt.Println("Using dev environment")
+		if !quiet {
+			fmt.Println("Using dev environment")
+		}
 		urlroot = "https://uberentdev.com"
 	} else {
 		urlroot = "http://uberent.com"
@@ -298,6 +304,9 @@ func run() int {
 	}
 
 
+	if !quiet {
+		fmt.Println("logging in...");
+	}
 	login_response := login(username, password, urlroot)
 	if login_response == nil {
 		return 1
@@ -305,7 +314,9 @@ func run() int {
 
 
 
-	fmt.Println("requesting streams...");
+	if !quiet {
+		fmt.Println("requesting streams...");
+	}
 
 	req,err := http.NewRequest("GET", urlroot + "/Launcher/ListStreams?Platform=" + platform, nil)
 	panicIf(err)
@@ -337,7 +348,7 @@ func run() int {
 	if !found {
 		fmt.Fprintf(os.Stderr, "Unknown stream: %v\nOptions:\n", desired_stream)
 		for _,stream = range streams_response.Streams {
-			fmt.Printf("    %v\n", stream.StreamName)
+			fmt.Fprintf(os.Stderr, "    %v\n", stream.StreamName)
 		}
 		return 1
 	}
@@ -349,13 +360,16 @@ func run() int {
 		fmt.Fprint(os.Stderr, err)
 		return 1
 	}
-	fmt.Printf("Using target directory %v\n", root_dir)
-
+	if !quiet {
+		fmt.Printf("Using target directory %v\n", root_dir)
+	}
 
 
 	manifest_url := fmt.Sprintf("%v/%v/%v", stream.DownloadUrl, stream.TitleFolder, stream.ManifestName)
 
-	fmt.Printf("downloading manifest %v\n", manifest_url)
+	if !quiet {
+		fmt.Printf("downloading manifest %v\n", manifest_url)
+	}
 
 	resp,err = client.Get(manifest_url + stream.AuthSuffix)
 	if err != nil {
@@ -413,11 +427,15 @@ func run() int {
 					diag_done <- struct{}{}
 					return
 				}
-				fmt.Printf("\r%v\n%v", item, status)
+				if !quiet {
+					fmt.Printf("\r%v\n%v", item, status)
+				}
 
 			case new_status := <-status_chan:
-				fmt.Printf("\r%-*s", len(status), new_status)
-				status = new_status
+				if !quiet {
+					fmt.Printf("\r%-*s", len(status), new_status)
+					status = new_status
+				}
 			}
 		}
 	}()
@@ -497,7 +515,9 @@ func run() int {
 
 	end := time.Now()
 	elapsed := end.Sub(start)
-	fmt.Printf("\nFinished in %v\n", elapsed)
+	if !quiet {
+		fmt.Printf("\nFinished in %v\n", elapsed)
+	}
 
 	if len(errors) > 0 {
 		fmt.Fprintln(os.Stderr, "\nUpdate failed:")
@@ -530,8 +550,6 @@ func run() int {
 
 func login(username, password, urlroot string) (result *LoginResponse) {
 
-	fmt.Println("logging in...");
-
 	login_params := LoginParams{
 		TitleId: 4,
 		AuthMethod: "UberCredentials",
@@ -546,7 +564,7 @@ func login(username, password, urlroot string) (result *LoginResponse) {
 
 	resp,err := client.Post(urlroot + "/GC/Authenticate", "application/json", bytes.NewBuffer(login_params_json))
 	if err != nil {
-		fmt.Printf("Could not contact %v:\n    %v\n", urlroot, err)
+		fmt.Fprintf(os.Stderr, "Could not contact %v:\n    %v\n", urlroot, err)
 		return nil
 	}
 
@@ -558,15 +576,15 @@ func login(username, password, urlroot string) (result *LoginResponse) {
 		var fail_response FailResponse
 		err = json.Unmarshal(resp_bytes, &fail_response)
 		if err == nil {
-			fmt.Printf("Login failed: %v (code=%v)\n", fail_response.Message, fail_response.ErrorCode)
+			fmt.Fprintf(os.Stderr, "Login failed: %v (code=%v)\n", fail_response.Message, fail_response.ErrorCode)
 			return nil
 		} 
-		fmt.Printf("login failed with HTTP status %#v\n", resp.Status)
+		fmt.Fprintf(os.Stderr, "login failed with HTTP status %#v\n", resp.Status)
 		if (len(resp_bytes) > 0) {
-			fmt.Printf("response details:\n")
-			os.Stdout.Write(resp_bytes)
+			fmt.Fprintf(os.Stderr, "response details:\n")
+			os.Stderr.Write(resp_bytes)
 			if resp_bytes[len(resp_bytes)-1] != '\n' {
-				fmt.Println()
+				fmt.Fprintln(os.Stderr)
 			}
 		}
 		return nil
