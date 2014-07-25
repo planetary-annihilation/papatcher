@@ -270,6 +270,10 @@ func run() int {
 	var root_dir string
 	flag.StringVar(&root_dir, "dir", "", "Target directory to patch") 
 
+	var update_only bool
+	flag.BoolVar(&update_only, "update-only", false, "Only do an update, don't launch")
+
+
 	flag.Parse()
 
 	var urlroot string
@@ -530,6 +534,10 @@ func run() int {
 			fmt.Fprintln(os.Stderr, "    ", err)
 		}
 		return 1
+	}
+
+	if update_only {
+		return 0
 	}
 
 	var args = make([]string,0,5)
