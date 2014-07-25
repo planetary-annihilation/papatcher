@@ -267,6 +267,9 @@ func run() int {
 	var quiet bool
 	flag.BoolVar(&quiet, "quiet", false, "No status updates")
 
+	var root_dir string
+	flag.StringVar(&root_dir, "dir", "", "Target directory to patch") 
+
 	flag.Parse()
 
 	var urlroot string
@@ -354,14 +357,16 @@ func run() int {
 	}
 
 
-	root_dir := filepath.Join(usr.HomeDir, ".local", "Uber Entertainment", "Planetary Annihilation")
+	if root_dir == "" {
+		root_dir = filepath.Join(usr.HomeDir, ".local", "Uber Entertainment", "Planetary Annihilation")
+	}
+	if !quiet {
+		fmt.Printf("Using target directory %v\n", root_dir)
+	}
 	err = os.MkdirAll(root_dir, 0777)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
 		return 1
-	}
-	if !quiet {
-		fmt.Printf("Using target directory %v\n", root_dir)
 	}
 
 
