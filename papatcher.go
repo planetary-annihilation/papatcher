@@ -413,7 +413,7 @@ func run() int {
 		return 1
 	}
 
-	total_work, err := validateManifest(&manifest)
+	total_work, files, err := validateManifest(&manifest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Manifest broken: %v\n", err)
 		return 1
@@ -428,25 +428,33 @@ func run() int {
 	diag_done := make(chan struct{})
 
 	go func () {
+		dc := diag_chan
+		sc := status_chan
+
 		var status string
-		for {
+		for dc != nil || sc != nil {
 			select {
-			case item,okay := <-diag_chan:
+			case item,okay := <-dc:
 				if !okay {
-					diag_done <- struct{}{}
-					return
+					dc = nil
 				}
 				if !quiet {
 					fmt.Printf("\r%v\n%v", item, status)
 				}
 
-			case new_status := <-status_chan:
-				if !quiet {
+			case new_status,okay := <-sc:
+				if !okay {
+					fmt.Printf("\r%-*s", len(status), "")
+					status = ""
+					sc = nil
+				} else if !quiet {
 					fmt.Printf("\r%-*s", len(status), new_status)
 					status = new_status
 				}
 			}
 		}
+		diag_done <- struct{}{}
+		return
 	}()
 
 
@@ -476,7 +484,7 @@ func run() int {
 						float64(cum.Download) * 100.0 / float64(total_work.Download),
 						float64(cum.Validate) * 100.0 / float64(total_work.Validate),
 						float64(cum.Write) * 100.0 / float64(total_work.Write))
-					status_chan <- ""
+					close(status_chan)
 					progress_done <- struct{}{}
 					return
 				}
@@ -511,10 +519,30 @@ func run() int {
 		}
 	}()
 
+
+	var removes []string
+	filepath.Walk(game_dir, func (path string, info os.FileInfo, err error) error {
+		filename := strings.Replace(path[len(game_dir):], "\\", "/", -1)
+		if !files[filename] {
+			// diag_chan <- fmt.Sprintf("removing %v", filename)
+			removes = append(removes, path)
+		}
+		return nil
+	})
+
+	for i := len(removes)-1; i >= 0; i-- {
+		path := removes[i]
+		err = os.Remove(path)
+		if err != nil {
+			errors_chan <- fmt.Sprintf("removal of extra file %v failed: %v", path, err)
+		}
+	}
+
 	waitgroup.Wait()
 
 	close(progress_chan)
 	<- progress_done
+
 
 	close(errors_chan)
 	errors := <- errors_done
@@ -609,7 +637,9 @@ func login(username, password, urlroot string) (result *LoginResponse) {
 }
 
 
-func validateManifest(manifest *Manifest) (work WorkItem, err error) {
+func validateManifest(manifest *Manifest) (work WorkItem, files map[string]bool, err error) {
+
+	files = make(map[string]bool)
 
 	seen := make(map[string]*ManifestBundle)
 	uniques := make([]*ManifestBundle, 0, len(manifest.Bundles))
@@ -650,6 +680,16 @@ func validateManifest(manifest *Manifest) (work WorkItem, err error) {
 			}
 			if entry.SizeZ,err = strconv.ParseInt(entry.SizeZStr, 10, 64); err != nil {
 				return
+			}
+
+			filename := entry.Filename
+			for !files[filename] {
+				files[filename] = true
+				slash := strings.LastIndex(filename, "/")
+				if slash == -1 {
+					break
+				}
+				filename = filename[:slash]
 			}
 
 			work.Validate += entry.Size
