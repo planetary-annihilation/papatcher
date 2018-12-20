@@ -1,5 +1,4 @@
-// Copyright 2014 Uber Entertainment.
-// All rights reserved.
+// Copyright ©2014-2018 Planetary Annihilation Inc. All rights reserved.
 
 package main
 
