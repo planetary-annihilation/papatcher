@@ -282,7 +282,7 @@ func run() int {
 		}
 		urlroot = "https://uberentdev.com"
 	} else {
-		urlroot = "http://uberent.com"
+		urlroot = "https://uberent.com"
 	}
 
 	stdin_reader := bufio.NewReader(os.Stdin)
