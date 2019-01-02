@@ -173,7 +173,7 @@ func readLine(reader *bufio.Reader, prompt string) (result string, err error) {
 			err = nil
 		} else {
 			err = io.ErrUnexpectedEOF
-		}			
+		}
 	}
 	return
 }
@@ -242,7 +242,7 @@ func run() int {
 	flag.BoolVar(&quiet, "quiet", false, "No status updates")
 
 	var root_dir string
-	flag.StringVar(&root_dir, "dir", "", "Target directory to patch") 
+	flag.StringVar(&root_dir, "dir", "", "Target directory to patch")
 
 	var update_only bool
 	flag.BoolVar(&update_only, "update-only", false, "Only do an update, don't launch")
@@ -264,7 +264,7 @@ func run() int {
 
 	var username string;
 	if flag.NArg() < 1 {
-		username,err = readLine(stdin_reader, "Ubername: ")
+		username,err = readLine(stdin_reader, "Username: ")
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
@@ -547,7 +547,7 @@ func run() int {
 		args = append(args, "--ubernetdev")
 	}
 	args = append(args, "--ticket", login_response.SessionTicket)
-	cmd := exec.Command(filepath.Join(game_dir, "PA"), args...) 
+	cmd := exec.Command(filepath.Join(game_dir, "PA"), args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err = cmd.Start(); err != nil {
@@ -593,7 +593,7 @@ func login(username, password, urlroot string) (result *LoginResponse) {
 		if err == nil {
 			fmt.Fprintf(os.Stderr, "Login failed: %v (code=%v)\n", fail_response.Message, fail_response.ErrorCode)
 			return nil
-		} 
+		}
 		fmt.Fprintf(os.Stderr, "login failed with HTTP status %#v\n", resp.Status)
 		if (len(resp_bytes) > 0) {
 			fmt.Fprintf(os.Stderr, "response details:\n")
@@ -739,7 +739,7 @@ func processBundle(bundle *ManifestBundle, download_prefix, auth_suffix, cache_d
 	download_factory := func () (io.ReadCloser) {
 		url := download_prefix + bundle.ChecksumStr
 		// diag_chan <- fmt.Sprintf("downloading %v", url)
-		
+
 		resp,err := client.Get(url + auth_suffix)
 		if err != nil {
 			errors_chan <- fmt.Sprintf("download of %v failed: %v", url, err)
