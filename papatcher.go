@@ -1,4 +1,4 @@
-// Copyright ©2014-2018 Planetary Annihilation Inc. All rights reserved.
+// Copyright ©2014-2019 Planetary Annihilation Inc. All rights reserved.
 
 package main
 
@@ -233,7 +233,7 @@ func run() int {
 
 
 	var devenv bool
-	flag.BoolVar(&devenv, "dev", false, "Use ubernetdev.com environment")
+	flag.BoolVar(&devenv, "dev", false, "Use PAnet dev environment")
 
 	var desired_stream string
 	flag.StringVar(&desired_stream, "stream", "stable", "Stream to download/update")
@@ -255,9 +255,9 @@ func run() int {
 		if !quiet {
 			fmt.Println("Using dev environment")
 		}
-		urlroot = "https://uberentdev.com"
+		urlroot = "https://service.dev.planetaryannihilation.net"
 	} else {
-		urlroot = "https://uberent.com"
+		urlroot = "https://service.planetaryannihilation.net"
 	}
 
 	stdin_reader := bufio.NewReader(os.Stdin)
