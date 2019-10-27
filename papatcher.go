@@ -2,32 +2,33 @@
 
 package main
 
-import "bufio"
-import "bytes"
-import "compress/gzip"
-import "crypto/sha1"
-import _ "crypto/sha256"
-import "crypto/tls"
-import "crypto/x509"
-import "encoding/hex"
-import "encoding/json"
-import "flag"
-import "fmt"
-import "io"
-import "io/ioutil"
-import "net/http"
-import "os"
-import "os/user"
-import "os/exec"
-import "path/filepath"
-import "runtime"
-import "sort"
-import "strconv"
-import "strings"
-import "sync"
-import "time"
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"crypto/sha1"
 
-
+	_ "crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
 
 var cacerts_pem = `
 -----BEGIN CERTIFICATE-----
@@ -58,86 +59,77 @@ yLyKQXhw2W2Xs0qLeC1etA+jTGDK4UfLeC0SF7FSi8o5LL21L8IzApar2pR/
 
 `
 
-
-
 type LoginParams struct {
-	TitleId int
+	TitleId    int
 	AuthMethod string
-	UberName string
-	Password string
+	UberName   string
+	Password   string
 }
 
 type LoginResponse struct {
 	SessionTicket string
-	UberName string
-	UberId uint64
-	DisplayName string
-	UberIdString string
+	UberName      string
+	UberId        uint64
+	DisplayName   string
+	UberIdString  string
 }
 
 type FailResponse struct {
 	ErrorCode int
-	Message string
+	Message   string
 }
-
 
 type StreamsResponse struct {
 	Streams []StreamInfo
 }
 
 type StreamInfo struct {
-	TitleId int
-	StreamName string
-	BuildId string
-	Description string
-	DownloadUrl string
-	AuthSuffix string
+	TitleId      int
+	StreamName   string
+	BuildId      string
+	Description  string
+	DownloadUrl  string
+	AuthSuffix   string
 	ManifestName string
-	TitleFolder string
+	TitleFolder  string
 }
-
 
 type WorkItem struct {
 	Download int64
 	Validate int64
-	Write int64
+	Write    int64
 }
 
-
-
 type ManifestEntry struct {
-	Filename string
-	ChecksumStr string `json:"checksum"`
+	Filename     string
+	ChecksumStr  string `json:"checksum"`
 	ChecksumZStr string `json:"checksumZ"`
-	SizeStr string `json:"size"`
-	SizeZStr string `json:"sizeZ"`
-	OffsetStr string `json:"offset"`
-	Executable bool
+	SizeStr      string `json:"size"`
+	SizeZStr     string `json:"sizeZ"`
+	OffsetStr    string `json:"offset"`
+	Executable   bool
 
-	Checksum []byte `json:"-"`
+	Checksum  []byte `json:"-"`
 	ChecksumZ []byte `json:"-"`
-	Size int64 `json:"-"`
-	SizeZ int64 `json:"-"`
-	Offset int64 `json:"-"`
+	Size      int64  `json:"-"`
+	SizeZ     int64  `json:"-"`
+	Offset    int64  `json:"-"`
 }
 
 type ManifestBundle struct {
 	ChecksumStr string `json:"checksum"`
-	SizeStr string `json:"size"`
-	Entries []*ManifestEntry
+	SizeStr     string `json:"size"`
+	Entries     []*ManifestEntry
 
 	Checksum []byte `json:"-"`
-	Size int64 `json:"-"`
+	Size     int64  `json:"-"`
 }
 
 type Manifest struct {
-	Version string
+	Version     string
 	PatchesFrom string
-	Bundles []*ManifestBundle
+	Bundles     []*ManifestBundle
 }
-
-
-
 
 type Throttle chan struct{}
 
@@ -150,11 +142,8 @@ func (t Throttle) Enter() {
 }
 
 func (t Throttle) Exit() {
-	<- t
+	<-t
 }
-
-
-
 
 func panicIf(err error) {
 	if err != nil {
@@ -162,10 +151,9 @@ func panicIf(err error) {
 	}
 }
 
-
 func readLine(reader *bufio.Reader, prompt string) (result string, err error) {
 	os.Stdout.Write([]byte(prompt))
-	result,err = reader.ReadString('\n')
+	result, err = reader.ReadString('\n')
 	if err == nil {
 		result = strings.TrimSuffix(result[:len(result)-1], "\r")
 	} else if err == io.EOF {
@@ -178,7 +166,6 @@ func readLine(reader *bufio.Reader, prompt string) (result string, err error) {
 	return
 }
 
-
 var client *http.Client
 
 func init() {
@@ -189,23 +176,35 @@ func init() {
 	}
 
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{ RootCAs: cacerts },
+		TLSClientConfig: &tls.Config{RootCAs: cacerts},
 	}
-	client = &http.Client{ Transport: tr }
+	client = &http.Client{Transport: tr}
 }
 
-var platform_map = map[string]string {
-	"darwin": "OSX",
-	"linux": "Linux",
-        "windows": "Windows",
+var platform_map = map[string]map[string]string{
+	"darwin": {
+		"platform": "OSX",
+		"home":     "~",
+		"dir":      filepath.Join("Library", "Application Support", "Uber Entertainment", "Planetary Annihilation", "data", "streams"),
+		"cache":    filepath.Join("Library", "Application Support", "Uber Entertainment", "Planetary Annihilation", "data", "streams", "_cache"),
+	},
+	"linux": {
+		"platform": "Linux",
+		"home":     "~",
+		"dir":      filepath.Join(".local", "Uber Entertainment", "Planetary Annihilation"),
+		"cache":    filepath.Join(".local", "Uber Entertainment", "Planetary Annihilation", ".cache"),
+	},
+	"windows": {
+		"platform": "Windows",
+		"home":     "C:\\",
+		"dir":      filepath.Join("Games", "Planetary Annihilation", "Planetary Annihilation"),
+		"cache":    filepath.Join("Games", "Planetary Annihilation", "cache"),
+	},
 }
-
-
 
 func main() {
 	os.Exit(run())
 }
-
 
 func run() int {
 
@@ -213,24 +212,31 @@ func run() int {
 
 	start := time.Now()
 
-
-	platform,ok := platform_map[runtime.GOOS]
+	config, ok := platform_map[runtime.GOOS]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Unrecognied result from runtime.GOOS: %v.\n", runtime.GOOS)
 		return 1
 	}
 
+	platform := config["platform"]
+	platform_home := config["home"]
+	platform_dir := config["dir"]
+	platform_cache_dir := config["cache"]
 
 	ncpus := runtime.NumCPU()
 	runtime.GOMAXPROCS(ncpus)
 
-
-	usr,err := user.Current()
+	usr, err := user.Current()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not figure out the current user: %v", err)
 		return 1
 	}
 
+	if platform_home == "~" {
+		platform_home = usr.HomeDir
+	}
+
+	cache_dir := filepath.Join(platform_home, platform_cache_dir)
 
 	var devenv bool
 	flag.BoolVar(&devenv, "dev", false, "Use PAnet dev environment")
@@ -247,11 +253,16 @@ func run() int {
 	var update_only bool
 	flag.BoolVar(&update_only, "update-only", false, "Only do an update, don't launch")
 
+	var username string
+	flag.StringVar(&username, "username", "", "")
+
+	var password string
+	flag.StringVar(&password, "password", "", "")
 
 	flag.Parse()
 
 	var urlroot string
-	if (devenv) {
+	if devenv {
 		if !quiet {
 			fmt.Println("Using dev environment")
 		}
@@ -262,56 +273,57 @@ func run() int {
 
 	stdin_reader := bufio.NewReader(os.Stdin)
 
-	var username string;
-	if flag.NArg() < 1 {
-		username,err = readLine(stdin_reader, "Username: ")
+	if username == "" {
+		username, err = readLine(stdin_reader, "Username: ")
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-	} else {
-		username = flag.Arg(0)
 	}
 
-	var password string;
-	if flag.NArg() < 2 {
-		password,err = readLine(stdin_reader, "Password: ")
+	if username == "" {
+		fmt.Println("username required")
+		os.Exit(1)
+	}
+
+	if password == "" {
+		password, err = readLine(stdin_reader, "Password: ")
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-	} else {
-		password = flag.Arg(1)
 	}
 
+	if password == "" {
+		fmt.Println("rpassword required")
+		os.Exit(1)
+	}
 
 	if !quiet {
-		fmt.Println("logging in...");
+		fmt.Println("logging in...")
 	}
 	login_response := login(username, password, urlroot)
 	if login_response == nil {
 		return 1
 	}
 
-
-
 	if !quiet {
-		fmt.Println("requesting streams...");
+		fmt.Println("requesting streams...")
 	}
 
-	req,err := http.NewRequest("GET", urlroot + "/Launcher/ListStreams?Platform=" + platform, nil)
+	req, err := http.NewRequest("GET", urlroot+"/Launcher/ListStreams?Platform="+platform, nil)
 	panicIf(err)
 	req.Header.Set("X-Authorization", login_response.SessionTicket)
-	resp,err := client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 
-	resp_bytes,err := ioutil.ReadAll(resp.Body)
+	resp_bytes, err := ioutil.ReadAll(resp.Body)
 	panicIf(err)
 	panicIf(resp.Body.Close())
-	if (resp.StatusCode != 200) {
+	if resp.StatusCode != 200 {
 		fmt.Fprintf(os.Stderr, "download failed: %v\n", resp.Status)
 		os.Stderr.Write(resp_bytes)
 		return 1
@@ -321,25 +333,25 @@ func run() int {
 
 	var streams_response StreamsResponse
 	panicIf(json.Unmarshal(resp_bytes, &streams_response))
-	for _,stream := range streams_response.Streams {
+	for _, stream := range streams_response.Streams {
 		streams[stream.StreamName] = stream
 	}
 
-	stream,found := streams[desired_stream]
+	stream, found := streams[desired_stream]
 	if !found {
 		fmt.Fprintf(os.Stderr, "Unknown stream: %v\nOptions:\n", desired_stream)
-		for _,stream = range streams_response.Streams {
+		for _, stream = range streams_response.Streams {
 			fmt.Fprintf(os.Stderr, "    %v\n", stream.StreamName)
 		}
 		return 1
 	}
 
-
 	if root_dir == "" {
-		root_dir = filepath.Join(usr.HomeDir, ".local", "Uber Entertainment", "Planetary Annihilation")
+		root_dir = filepath.Join(platform_home, platform_dir)
 	}
 	if !quiet {
 		fmt.Printf("Using target directory %v\n", root_dir)
+		fmt.Printf("Using cache directory %v\n", cache_dir)
 	}
 	err = os.MkdirAll(root_dir, 0777)
 	if err != nil {
@@ -347,24 +359,23 @@ func run() int {
 		return 1
 	}
 
-
 	manifest_url := fmt.Sprintf("%v/%v/%v", stream.DownloadUrl, stream.TitleFolder, stream.ManifestName)
 
 	if !quiet {
 		fmt.Printf("downloading manifest %v\n", manifest_url)
 	}
 
-	resp,err = client.Get(manifest_url + stream.AuthSuffix)
+	resp, err = client.Get(manifest_url + stream.AuthSuffix)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "download failed: %v\n", err)
 		return 1
 	}
-	reader,err := gzip.NewReader(resp.Body)
+	reader, err := gzip.NewReader(resp.Body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "download failed: %v\n", err)
 		return 1
 	}
-	manifest_bytes,err := ioutil.ReadAll(reader)
+	manifest_bytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "download failed: %v\n", err)
 		return 1
@@ -374,12 +385,11 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "download failed: %v\n", err)
 		return 1
 	}
-	if (resp.StatusCode != 200) {
+	if resp.StatusCode != 200 {
 		fmt.Fprintf(os.Stderr, "download failed: %v\n", resp.Status)
 		os.Stderr.Write(manifest_bytes)
 		return 1
 	}
-
 
 	var manifest Manifest
 	if err = json.Unmarshal(manifest_bytes, &manifest); err != nil {
@@ -401,14 +411,14 @@ func run() int {
 	status_chan := make(chan string, 3)
 	diag_done := make(chan struct{})
 
-	go func () {
+	go func() {
 		dc := diag_chan
 		sc := status_chan
 
 		var status string
 		for dc != nil || sc != nil {
 			select {
-			case item,okay := <-dc:
+			case item, okay := <-dc:
 				if !okay {
 					dc = nil
 				}
@@ -416,7 +426,7 @@ func run() int {
 					fmt.Printf("\r%v\n%v", item, status)
 				}
 
-			case new_status,okay := <-sc:
+			case new_status, okay := <-sc:
 				if !okay {
 					fmt.Printf("\r%-*s", len(status), "")
 					status = ""
@@ -431,11 +441,10 @@ func run() int {
 		return
 	}()
 
-
 	errors_chan := make(chan string, 3)
 	errors_done := make(chan []string)
 
-	go func () {
+	go func() {
 		errors := make([]string, 0)
 		for err := range errors_chan {
 			errors = append(errors, err)
@@ -452,12 +461,12 @@ func run() int {
 		var cum WorkItem
 		for {
 			select {
-			case item,okay := <-progress_chan:
+			case item, okay := <-progress_chan:
 				if !okay {
 					diag_chan <- fmt.Sprintf("D: %5.1f%%  V: %5.1f%%  W: %5.1f%%",
-						float64(cum.Download) * 100.0 / float64(total_work.Download),
-						float64(cum.Validate) * 100.0 / float64(total_work.Validate),
-						float64(cum.Write) * 100.0 / float64(total_work.Write))
+						float64(cum.Download)*100.0/float64(total_work.Download),
+						float64(cum.Validate)*100.0/float64(total_work.Validate),
+						float64(cum.Write)*100.0/float64(total_work.Write))
 					close(status_chan)
 					progress_done <- struct{}{}
 					return
@@ -468,9 +477,9 @@ func run() int {
 
 			case _ = <-ticker.C:
 				status_chan <- fmt.Sprintf("D: %5.1f%%  V: %5.1f%%  W: %5.1f%%",
-					float64(cum.Download) * 100.0 / float64(total_work.Download),
-					float64(cum.Validate) * 100.0 / float64(total_work.Validate),
-					float64(cum.Write) * 100.0 / float64(total_work.Write))
+					float64(cum.Download)*100.0/float64(total_work.Download),
+					float64(cum.Validate)*100.0/float64(total_work.Validate),
+					float64(cum.Write)*100.0/float64(total_work.Write))
 			}
 		}
 	}()
@@ -479,13 +488,10 @@ func run() int {
 	var waitgroup sync.WaitGroup
 	waitgroup.Add(len(manifest.Bundles))
 
-
-	cache_dir := filepath.Join(root_dir, ".cache")
-
-	go func () {
-		for _,bundle := range manifest.Bundles {
+	go func() {
+		for _, bundle := range manifest.Bundles {
 			throttle.Enter()
-			go func (bundle *ManifestBundle) {
+			go func(bundle *ManifestBundle) {
 				defer throttle.Exit()
 				processBundle(bundle, download_prefix, stream.AuthSuffix, cache_dir, game_dir, diag_chan, errors_chan, progress_chan)
 				waitgroup.Done()
@@ -493,9 +499,8 @@ func run() int {
 		}
 	}()
 
-
 	var removes []string
-	filepath.Walk(game_dir, func (path string, info os.FileInfo, err error) error {
+	filepath.Walk(game_dir, func(path string, info os.FileInfo, err error) error {
 		filename := strings.Replace(path[len(game_dir):], "\\", "/", -1)
 		if !files[filename] {
 			// diag_chan <- fmt.Sprintf("removing %v", filename)
@@ -504,7 +509,7 @@ func run() int {
 		return nil
 	})
 
-	for i := len(removes)-1; i >= 0; i-- {
+	for i := len(removes) - 1; i >= 0; i-- {
 		path := removes[i]
 		err = os.Remove(path)
 		if err != nil {
@@ -515,14 +520,13 @@ func run() int {
 	waitgroup.Wait()
 
 	close(progress_chan)
-	<- progress_done
-
+	<-progress_done
 
 	close(errors_chan)
-	errors := <- errors_done
+	errors := <-errors_done
 
 	close(diag_chan)
-	<- diag_done
+	<-diag_done
 
 	end := time.Now()
 	elapsed := end.Sub(start)
@@ -532,7 +536,7 @@ func run() int {
 
 	if len(errors) > 0 {
 		fmt.Fprintln(os.Stderr, "\nUpdate failed:")
-		for _,err := range errors {
+		for _, err := range errors {
 			fmt.Fprintln(os.Stderr, "    ", err)
 		}
 		return 1
@@ -542,7 +546,7 @@ func run() int {
 		return 0
 	}
 
-	var args = make([]string,0,5)
+	var args = make([]string, 0, 5)
 	if devenv {
 		args = append(args, "--ubernetdev")
 	}
@@ -566,27 +570,27 @@ func run() int {
 func login(username, password, urlroot string) (result *LoginResponse) {
 
 	login_params := LoginParams{
-		TitleId: 4,
+		TitleId:    4,
 		AuthMethod: "UberCredentials",
-		UberName: username,
-		Password: password,
+		UberName:   username,
+		Password:   password,
 	}
 
-	login_params_json,err := json.Marshal(login_params)
+	login_params_json, err := json.Marshal(login_params)
 	if err != nil {
-		panic(err);
+		panic(err)
 	}
 
-	resp,err := client.Post(urlroot + "/GC/Authenticate", "application/json", bytes.NewBuffer(login_params_json))
+	resp, err := client.Post(urlroot+"/GC/Authenticate", "application/json", bytes.NewBuffer(login_params_json))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not contact %v:\n    %v\n", urlroot, err)
 		return nil
 	}
 
-	resp_bytes,err := ioutil.ReadAll(resp.Body)
+	resp_bytes, err := ioutil.ReadAll(resp.Body)
 	panicIf(err)
 	panicIf(resp.Body.Close())
-	if (resp.StatusCode != 200) {
+	if resp.StatusCode != 200 {
 
 		var fail_response FailResponse
 		err = json.Unmarshal(resp_bytes, &fail_response)
@@ -595,7 +599,7 @@ func login(username, password, urlroot string) (result *LoginResponse) {
 			return nil
 		}
 		fmt.Fprintf(os.Stderr, "login failed with HTTP status %#v\n", resp.Status)
-		if (len(resp_bytes) > 0) {
+		if len(resp_bytes) > 0 {
 			fmt.Fprintf(os.Stderr, "response details:\n")
 			os.Stderr.Write(resp_bytes)
 			if resp_bytes[len(resp_bytes)-1] != '\n' {
@@ -610,7 +614,6 @@ func login(username, password, urlroot string) (result *LoginResponse) {
 	return
 }
 
-
 func validateManifest(manifest *Manifest) (work WorkItem, files map[string]bool, err error) {
 
 	files = make(map[string]bool)
@@ -618,16 +621,16 @@ func validateManifest(manifest *Manifest) (work WorkItem, files map[string]bool,
 	seen := make(map[string]*ManifestBundle)
 	uniques := make([]*ManifestBundle, 0, len(manifest.Bundles))
 
-	for _,bundle := range manifest.Bundles {
-		if bundle.Checksum,err = hex.DecodeString(bundle.ChecksumStr); err != nil {
+	for _, bundle := range manifest.Bundles {
+		if bundle.Checksum, err = hex.DecodeString(bundle.ChecksumStr); err != nil {
 			return
 		}
 
-		if bundle.Size,err = strconv.ParseInt(bundle.SizeStr, 10, 64); err != nil {
+		if bundle.Size, err = strconv.ParseInt(bundle.SizeStr, 10, 64); err != nil {
 			return
 		}
 
-		existing,found := seen[bundle.ChecksumStr]
+		existing, found := seen[bundle.ChecksumStr]
 		if found {
 			if existing.Size != bundle.Size {
 				err = fmt.Errorf("Bundle %v repeated but with different sizes (%v and %v)", bundle.Checksum, bundle.Size, existing.Size)
@@ -642,17 +645,17 @@ func validateManifest(manifest *Manifest) (work WorkItem, files map[string]bool,
 			work.Write += bundle.Size
 		}
 
-		for _,entry := range bundle.Entries {
-			if entry.Checksum,err = hex.DecodeString(entry.ChecksumStr); err != nil {
+		for _, entry := range bundle.Entries {
+			if entry.Checksum, err = hex.DecodeString(entry.ChecksumStr); err != nil {
 				return
 			}
-			if entry.Offset,err = strconv.ParseInt(entry.OffsetStr, 10, 64); err != nil {
+			if entry.Offset, err = strconv.ParseInt(entry.OffsetStr, 10, 64); err != nil {
 				return
 			}
-			if entry.Size,err = strconv.ParseInt(entry.SizeStr, 10, 64); err != nil {
+			if entry.Size, err = strconv.ParseInt(entry.SizeStr, 10, 64); err != nil {
 				return
 			}
-			if entry.SizeZ,err = strconv.ParseInt(entry.SizeZStr, 10, 64); err != nil {
+			if entry.SizeZ, err = strconv.ParseInt(entry.SizeZStr, 10, 64); err != nil {
 				return
 			}
 
@@ -676,9 +679,6 @@ func validateManifest(manifest *Manifest) (work WorkItem, files map[string]bool,
 	return
 }
 
-
-
-
 type ByOffset []*ManifestEntry
 
 func (a ByOffset) Len() int {
@@ -691,14 +691,13 @@ func (a ByOffset) Less(i, j int) bool {
 	return a[i].Offset < a[j].Offset
 }
 
-
 type DownloadWrapper struct {
-	file io.ReadCloser
+	file          io.ReadCloser
 	progress_chan chan<- WorkItem
 }
 
 func (dw *DownloadWrapper) Read(bytes []byte) (n int, err error) {
-	n,err = dw.file.Read(bytes)
+	n, err = dw.file.Read(bytes)
 	if n > 0 {
 		dw.progress_chan <- WorkItem{Download: int64(n), Write: int64(n)}
 	}
@@ -709,14 +708,13 @@ func (dw *DownloadWrapper) Close() error {
 	return dw.file.Close()
 }
 
-
 type WriteWrapper struct {
-	file io.ReadCloser
+	file          io.ReadCloser
 	progress_chan chan<- WorkItem
 }
 
 func (ww *WriteWrapper) Read(bytes []byte) (n int, err error) {
-	n,err = ww.file.Read(bytes)
+	n, err = ww.file.Read(bytes)
 	if n > 0 {
 		ww.progress_chan <- WorkItem{Write: int64(n)}
 	}
@@ -727,20 +725,17 @@ func (ww *WriteWrapper) Close() error {
 	return ww.file.Close()
 }
 
-
-
-
 func processBundle(bundle *ManifestBundle, download_prefix, auth_suffix, cache_dir, game_dir string, diag_chan, errors_chan chan<- string, progress_chan chan<- WorkItem) {
 
 	cache_file := filepath.Join(cache_dir, strings.ToLower(bundle.ChecksumStr))
 
 	downloaded := false
 
-	download_factory := func () (io.ReadCloser) {
+	download_factory := func() io.ReadCloser {
 		url := download_prefix + bundle.ChecksumStr
 		// diag_chan <- fmt.Sprintf("downloading %v", url)
 
-		resp,err := client.Get(url + auth_suffix)
+		resp, err := client.Get(url + auth_suffix)
 		if err != nil {
 			errors_chan <- fmt.Sprintf("download of %v failed: %v", url, err)
 			return nil
@@ -770,19 +765,19 @@ func processBundle(bundle *ManifestBundle, download_prefix, auth_suffix, cache_d
 
 	sort.Sort(ByOffset(bundle.Entries))
 
-	for _,entry := range bundle.Entries {
+	for _, entry := range bundle.Entries {
 
 		dst_file := game_dir + entry.Filename
-		extract_factory := func () (io.ReadCloser) {
+		extract_factory := func() io.ReadCloser {
 			//diag_chan <- fmt.Sprintf("extracting %v from %v [offset %v]", dst_file, cache_file, entry.Offset)
 			var err error
-			if _,err = file.Seek(entry.Offset, os.SEEK_SET); err != nil {
+			if _, err = file.Seek(entry.Offset, os.SEEK_SET); err != nil {
 				errors_chan <- fmt.Sprintf("extraction of %v failed: %v", entry.Filename, err)
 				return nil
 			}
 			var reader io.ReadCloser
 			if entry.SizeZ != 0 {
-				reader,err = gzip.NewReader(&io.LimitedReader{R: file, N: entry.SizeZ})
+				reader, err = gzip.NewReader(&io.LimitedReader{R: file, N: entry.SizeZ})
 				if err != nil {
 					errors_chan <- fmt.Sprintf("extraction of %v failed: %v", entry.Filename, err)
 					return nil
@@ -797,15 +792,14 @@ func processBundle(bundle *ManifestBundle, download_prefix, auth_suffix, cache_d
 	}
 }
 
+func verifyOrRecreate(filename string, checksum []byte, length int64, executable bool, factory func() io.ReadCloser, leave_open bool, diag_chan, errors_chan chan<- string, progress_chan chan<- WorkItem) *os.File {
 
-func verifyOrRecreate(filename string, checksum []byte, length int64, executable bool, factory func () io.ReadCloser, leave_open bool, diag_chan, errors_chan chan<- string, progress_chan chan<- WorkItem) *os.File {
-
-	file,err := os.Open(filename)
+	file, err := os.Open(filename)
 
 	if err == nil {
 		//diag_chan <- fmt.Sprintf("verifying %v (length %v)", filename, length)
 		hash := sha1.New()
-		_,err := io.Copy(hash, file)
+		_, err := io.Copy(hash, file)
 		progress_chan <- WorkItem{Validate: length}
 		if err != nil {
 			diag_chan <- fmt.Sprintf("%v: %v", filename, err)
@@ -815,7 +809,7 @@ func verifyOrRecreate(filename string, checksum []byte, length int64, executable
 			file.Close()
 		} else {
 			progress_chan <- WorkItem{Write: length}
-			fileinfo,err := file.Stat()
+			fileinfo, err := file.Stat()
 			if err != nil {
 				errors_chan <- err.Error()
 				return nil
@@ -823,7 +817,7 @@ func verifyOrRecreate(filename string, checksum []byte, length int64, executable
 			exe_bits := fileinfo.Mode() & 0111
 			if executable {
 				read_bits := fileinfo.Mode() & 0444
-				if (read_bits >> 2 != exe_bits) {
+				if read_bits>>2 != exe_bits {
 					err = file.Chmod(fileinfo.Mode() | (read_bits >> 2))
 					if err != nil {
 						errors_chan <- err.Error()
@@ -832,7 +826,7 @@ func verifyOrRecreate(filename string, checksum []byte, length int64, executable
 				}
 			} else {
 				if exe_bits != 0 {
-					err = file.Chmod(fileinfo.Mode() ^ exe_bits);
+					err = file.Chmod(fileinfo.Mode() ^ exe_bits)
 					if err != nil {
 						errors_chan <- err.Error()
 						return nil
@@ -862,8 +856,12 @@ func verifyOrRecreate(filename string, checksum []byte, length int64, executable
 	}
 
 	var mode os.FileMode
-	if executable { mode = 0777 } else { mode = 0666 }
-	dst,err := os.OpenFile(filename + ".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode)
+	if executable {
+		mode = 0777
+	} else {
+		mode = 0666
+	}
+	dst, err := os.OpenFile(filename+".new", os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		src.Close()
 		errors_chan <- err.Error()
@@ -871,7 +869,7 @@ func verifyOrRecreate(filename string, checksum []byte, length int64, executable
 	}
 
 	hash := sha1.New()
-	if _,err = io.Copy(io.MultiWriter(dst, hash), src); err != nil {
+	if _, err = io.Copy(io.MultiWriter(dst, hash), src); err != nil {
 		src.Close()
 		dst.Close()
 		errors_chan <- err.Error()
@@ -892,7 +890,7 @@ func verifyOrRecreate(filename string, checksum []byte, length int64, executable
 		return nil
 	}
 
-	if err = os.Rename(filename + ".new", filename); err != nil {
+	if err = os.Rename(filename+".new", filename); err != nil {
 		errors_chan <- err.Error()
 		return nil
 	}
@@ -901,7 +899,7 @@ func verifyOrRecreate(filename string, checksum []byte, length int64, executable
 		return nil
 	}
 
-	result,err := os.Open(filename)
+	result, err := os.Open(filename)
 	if err != nil {
 		errors_chan <- err.Error()
 		return nil
@@ -909,4 +907,3 @@ func verifyOrRecreate(filename string, checksum []byte, length int64, executable
 
 	return result
 }
-
