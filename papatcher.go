@@ -1,4 +1,4 @@
-// Copyright ©2014-2019 Planetary Annihilation Inc. All rights reserved.
+// Copyright ©2014-2021 Planetary Annihilation Inc. All rights reserved.
 
 package main
 
